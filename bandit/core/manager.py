@@ -425,17 +425,55 @@ def _matches_glob_list(filename, glob_list):
     return False
 
 
+def _baseline_signature(issue):
+    """Build a hashable signature that uniquely identifies an Issue for
+    baseline-filtering purposes.
+
+    The signature deliberately includes ``lineno`` because a baseline entry
+    recorded for a finding at one line number must not silently absorb
+    findings with otherwise identical attributes that occur at different
+    lines (see issue #1467). Including ``lineno`` here keeps the existing
+    ``Issue.__eq__`` semantics intact while giving the baseline filter a
+    stricter identity to match against.
+    """
+    return (
+        issue.text,
+        issue.severity,
+        issue.cwe.id,
+        issue.confidence,
+        issue.fname,
+        issue.test,
+        issue.test_id,
+        issue.lineno,
+    )
+
+
 def _compare_baseline_results(baseline, results):
     """Compare a baseline list of issues to list of results
 
     This function compares a baseline set of issues to a current set of issues
-    to find results that weren't present in the baseline.
+    to find results that weren't present in the baseline. The baseline is
+    treated as a multiset: each baseline entry can absorb at most one new
+    finding with the same signature. This prevents a single baseline entry
+    from silently absorbing an unlimited number of new findings with the
+    same rule/text/test_id in the same file (e.g. a hardcoded-password
+    violation recorded once in the baseline that would otherwise suppress
+    every other hardcoded-password finding added later at different lines).
+    See issue #1467.
 
     :param baseline: Baseline list of issues
     :param results: Current list of issues
     :return: List of unmatched issues
     """
-    return [a for a in results if a not in baseline]
+    remaining = collections.Counter(_baseline_signature(b) for b in baseline)
+    unmatched = []
+    for result in results:
+        sig = _baseline_signature(result)
+        if remaining[sig] > 0:
+            remaining[sig] -= 1
+        else:
+            unmatched.append(result)
+    return unmatched
 
 
 def _find_candidate_matches(unmatched_issues, results_list):

@@ -361,6 +361,68 @@ class ManagerTests(testtools.TestCase):
             ),
         )
 
+    def test_compare_baseline_lineno_distinguishes_equal_issues(self):
+        # Issue #1467: Issue.__eq__ does not include lineno, so two issues
+        # that differ only by line number are still considered equal.
+        # The baseline filter must therefore NOT silently absorb an
+        # unlimited number of new findings that share every other
+        # attribute but occur at different lines.
+        issue_a = self._get_issue_instance()
+        issue_b = self._get_issue_instance()
+        issue_c = self._get_issue_instance()
+        issue_b.lineno = 2
+        issue_c.lineno = 3
+
+        # Same fname/test/text, different lines.
+        self.assertEqual(issue_a.fname, issue_b.fname)
+        self.assertEqual(issue_a.test, issue_b.test)
+        self.assertNotEqual(issue_a.lineno, issue_b.lineno)
+
+        # 1 baseline entry, 2 new findings that are "equal" except for line.
+        # Both should be reported as unmatched.
+        self.assertEqual(
+            [issue_b, issue_c],
+            manager._compare_baseline_results([issue_a], [issue_b, issue_c]),
+        )
+
+    def test_compare_baseline_respects_multiplicity(self):
+        # Issue #1467: the baseline is a multiset. One baseline entry can
+        # absorb at most one matching result.
+        issue_a = self._get_issue_instance()
+        issue_b = self._get_issue_instance()
+        issue_c = self._get_issue_instance()
+        # Pin to the same line so the signature collapses to lineno + the
+        # default 1. We then vary which entry survives via the Counter.
+        issue_b.lineno = 1
+        issue_c.lineno = 1
+
+        # 1 baseline entry, 2 results with the same signature. Exactly
+        # one should be absorbed, one should remain unmatched.
+        self.assertEqual(
+            [issue_c],
+            manager._compare_baseline_results([issue_a], [issue_b, issue_c]),
+        )
+
+        # 2 baseline entries of the same signature, 2 results with the
+        # same signature. None should be unmatched.
+        self.assertEqual(
+            [],
+            manager._compare_baseline_results(
+                [issue_a, issue_a], [issue_b, issue_c]
+            ),
+        )
+
+        # 1 baseline entry, 3 results with the same signature. Two should
+        # remain unmatched.
+        issue_d = self._get_issue_instance()
+        issue_d.lineno = 1
+        self.assertEqual(
+            [issue_c, issue_d],
+            manager._compare_baseline_results(
+                [issue_a], [issue_b, issue_c, issue_d]
+            ),
+        )
+
     def test_find_candidate_matches(self):
         issue_a = self._get_issue_instance()
         issue_b = self._get_issue_instance()
