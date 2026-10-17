@@ -648,6 +648,17 @@ class FunctionalTests(testtools.TestCase):
         }
         self.check_example("assert.py", expect)
 
+        # Regression for bandit#1478: a single bare-string `skips` glob
+        # (e.g. ``skips = 'tests/**.py'`` in pyproject.toml) used to
+        # iterate character-by-character, where the lone ``*`` matched
+        # every filename and suppressed the check project-wide.
+        test._config = {"skips": "tests/**.py"}
+        expect = {
+            "SEVERITY": {"UNDEFINED": 0, "LOW": 1, "MEDIUM": 0, "HIGH": 0},
+            "CONFIDENCE": {"UNDEFINED": 0, "LOW": 0, "MEDIUM": 0, "HIGH": 1},
+        }
+        self.check_example("assert.py", expect)
+
     def test_paramiko_injection(self):
         """Test paramiko command execution."""
         expect = {

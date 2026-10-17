@@ -68,7 +68,14 @@ def gen_config(name):
 @test.test_id("B101")
 @test.checks("Assert")
 def assert_used(context, config):
-    for skip in config.get("skips", []):
+    skips = config.get("skips", [])
+    if isinstance(skips, str):
+        # `skips` may come from a YAML or TOML config where a single glob
+        # is given as a bare string instead of a sequence. Iterating over
+        # the string would feed each character to fnmatch, and a lone '*'
+        # would match every filename, suppressing the check project-wide.
+        skips = [skips]
+    for skip in skips:
         if fnmatch.fnmatch(context.filename, skip):
             return None
 
